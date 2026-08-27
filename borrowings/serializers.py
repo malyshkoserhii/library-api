@@ -62,3 +62,9 @@ class BorrowingCreateSerializer(serializers.ModelSerializer):
 
         borrowing = Borrowing.objects.create(**validated_data)
         return borrowing
+
+class BorrowingReturnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Borrowing
+        fields = ("id", "actual_return_date")
+        read_only_fields = ("id", "actual_return_date")

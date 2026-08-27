@@ -1,11 +1,16 @@
-from rest_framework import viewsets, mixins
+from datetime import date
+from django.db import transaction
+from rest_framework import viewsets, mixins, status
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from borrowings.models import Borrowing
 from borrowings.serializers import (
     BorrowingListSerializer,
     BorrowingDetailSerializer,
     BorrowingCreateSerializer,
+    BorrowingReturnSerializer,
 )
 
 
@@ -48,7 +53,30 @@ class BorrowingViewSet(
             return BorrowingDetailSerializer
         if self.action == "create":
             return BorrowingCreateSerializer
+        if self.action == "return_borrowing":
+            return BorrowingReturnSerializer
         return self.serializer_class
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    @action(methods=["POST"], detail=True, url_path="return")
+    @transaction.atomic
+    def return_borrowing(self, request, pk=None):
+        borrowing = self.get_object()
+
+        if borrowing.actual_return_date is not None:
+            return Response(
+                {"detail": "This borrowing has already been returned."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        borrowing.actual_return_date = date.today()
+        borrowing.save()
+
+        book = borrowing.book
+        book.inventory += 1
+        book.save()
+
+        serializer = BorrowingDetailSerializer(borrowing)
+        return Response(serializer.data, status=status.HTTP_200_OK)
