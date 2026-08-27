@@ -1,5 +1,6 @@
 from datetime import date
 from django.db import transaction
+from drf_spectacular.utils import extend_schema, OpenApiParameter, extend_schema_view
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +15,35 @@ from borrowings.serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List borrowings",
+        description="Retrieve a list of borrowings. "
+        "Non-staff users only see their own borrowings.",
+        parameters=[
+            OpenApiParameter(
+                name="is_active",
+                type=bool,
+                description="Filter active (not returned yet) borrowings "
+                "(e.g. ?is_active=true)",
+            ),
+            OpenApiParameter(
+                name="user_id",
+                type=int,
+                description="Filter borrowings by user ID "
+                "(available for staff users only)",
+            ),
+        ],
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve borrowing details",
+        description="Retrieve detailed information about a specific borrowing by ID.",
+    ),
+    create=extend_schema(
+        summary="Create a new borrowing",
+        description="Borrow a book. Decrements the book's inventory by 1.",
+    ),
+)
 class BorrowingViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -60,9 +90,20 @@ class BorrowingViewSet(
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    @extend_schema(
+        summary="Return a borrowed book",
+        description="Closes the borrowing record, sets actual_return_date to today, "
+        "and increases book inventory by 1.",
+        responses={
+            200: BorrowingDetailSerializer,
+            400: {"description": "Borrowing is already returned."},
+        },
+    )
     @action(methods=["POST"], detail=True, url_path="return")
     @transaction.atomic
     def return_borrowing(self, request, pk=None):
+        """Endpoint for returning a borrowed book"""
+
         borrowing = self.get_object()
 
         if borrowing.actual_return_date is not None:
